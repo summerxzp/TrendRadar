@@ -3707,6 +3707,26 @@ def send_to_feishu(
     print(f"飞书消息分为 {len(batches)} 批次发送 [{report_type}]")
 
     # 逐批发送
+    # for i, batch_content in enumerate(batches, 1):
+    #     batch_size = len(batch_content.encode("utf-8"))
+    #     print(
+    #         f"发送飞书第 {i}/{len(batches)} 批次，大小：{batch_size} 字节 [{report_type}]"
+    #     )
+
+    #     total_titles = sum(
+    #         len(stat["titles"]) for stat in report_data["stats"] if stat["count"] > 0
+    #     )
+    #     now = get_beijing_time()
+
+    #     payload = {
+    #         "msg_type": "text",
+    #         "content": {
+    #             "total_titles": total_titles,
+    #             "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
+    #             "report_type": report_type,
+    #             "text": batch_content,
+    #         },
+    #     }
     for i, batch_content in enumerate(batches, 1):
         batch_size = len(batch_content.encode("utf-8"))
         print(
@@ -3718,16 +3738,44 @@ def send_to_feishu(
         )
         now = get_beijing_time()
 
+        # === 🔥 核心修改开始 🔥 ===
+        import re
+        # 1. 清洗掉飞书不支持的 HTML 标签 (<font> 等)，避免乱码
+        clean_content = re.sub(r'<.*?>', '', batch_content)
+        
+        # 2. 构造飞书“交互式卡片”消息 (Interactive)
+        # 这样才能让 Markdown 链接 [标题](URL) 变成可点击的
         payload = {
-            "msg_type": "text",
-            "content": {
-                "total_titles": total_titles,
-                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
-                "report_type": report_type,
-                "text": batch_content,
-            },
+            "msg_type": "interactive",
+            "card": {
+                "header": {
+                    "title": {
+                        "tag": "plain_text",
+                        "content": f"TrendRadar - {report_type}"
+                    },
+                    "template": "blue"
+                },
+                "elements": [
+                    {
+                        "tag": "markdown",
+                        "content": clean_content
+                    },
+                    {
+                        "tag": "note",
+                        "elements": [
+                            {
+                                "tag": "plain_text",
+                                "content": f"更新时间：{now.strftime('%H:%M:%S')} | 第 {i}/{len(batches)} 批次"
+                            }
+                        ]
+                    }
+                ]
+            }
         }
+        # === 🔥 核心修改结束 🔥 ===
 
+
+        
         try:
             response = requests.post(
                 webhook_url, headers=headers, json=payload, proxies=proxies, timeout=30
